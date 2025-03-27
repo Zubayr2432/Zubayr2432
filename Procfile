@@ -1,1 +1,1 @@
-worked: python bot1.py
+python bot1.py
