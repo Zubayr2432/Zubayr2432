@@ -1,3 +1,5 @@
-aiogram==3.0.0b7
+aiogram==3.0.0
+asyncio
 sqlite3
-python-dotenv
+logging
+datetime
