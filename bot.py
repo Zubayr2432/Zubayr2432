@@ -23,6 +23,13 @@ class Config:
     ADMIN_IDS = [7871012050, 7183540853]  # Admins list
     BATCH_SIZE = 30  # For bulk operations
     BATCH_DELAY = 1  # Delay between batches in seconds
+import sqlite3
+
+# "kino.db" faylini yaratish
+conn = sqlite3.connect("kino.db")
+conn.close()
+
+print("kino.db yaratildi!")
 
 # Improved logging setup
 logging.basicConfig(
