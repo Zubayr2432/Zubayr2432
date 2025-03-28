@@ -30,6 +30,12 @@ conn = sqlite3.connect("kino.db")
 conn.close()
 
 print("kino.db yaratildi!")
+{
+  "scripts": {
+    "build": "npm run build",
+    "start": "node index.js"
+  }
+}
 
 # Improved logging setup
 logging.basicConfig(
