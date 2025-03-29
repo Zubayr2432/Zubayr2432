@@ -5,7 +5,7 @@
     "buildCommand": "pip install -r requirements.txt"
   },
   "deploy": {
-    "runtime": "V2",  # Yoki "UNSPECIFIED" yoki "LEGACY"
+    "runtime": "V2", "UNSPECIFIED", "LEGACY"
     "startCommand": "python3 kino.py",
     "restartPolicyType": "ALWAYS",
     "restartPolicyMaxRetries": 10
