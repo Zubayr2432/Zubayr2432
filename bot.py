@@ -18,33 +18,16 @@ from typing import List
 load_dotenv()
 
 class Config:
-    # Channel configurations
-    CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "ajoyib_kino_kodlari1")
+    CHANNEL_USERNAME = "ajoyib_kino_kodlari1"
     CHANNEL_LINK = f"https://t.me/{CHANNEL_USERNAME}"
-    CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1002341118048"))
-    
-    # Hidden channel configurations
-    CHANNEL_USERNAME_sh = os.getenv("HIDDEN_CHANNEL_USERNAME", "+ZRxWtd33UQc5YzQy")
+    CHANNEL_ID = -1002341118048
+    CHANNEL_USERNAME_sh = "+ZRxWtd33UQc5YzQy"  # Hidden channel
     CHANNEL_LINK_sh = f"https://t.me/{CHANNEL_USERNAME_sh}"
-    CHANNEL_ID_sh = int(os.getenv("HIDDEN_CHANNEL_ID", "-1002537276349"))
-    
-    # Bot configuration
-    BOT_TOKEN = os.getenv("BOT_TOKEN", "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k")
-    
-    # Admin list (converted from comma-separated string to list of integers)
-    ADMIN_IDS = [int(id.strip()) for id in os.getenv("ADMIN_IDS", "7871012050,7183540853").split(",")]
-    
-    # Performance settings
+    CHANNEL_ID_sh = -1002537276349
+    BOT_TOKEN = os.getenv("BOT_TOKEN") or "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k"
+    ADMIN_IDS = [7871012050, 7183540853]  # Admins list
     BATCH_SIZE = 30  # For bulk operations
-    BATCH_DELAY = 1  # Delay between batches in seconds
-
-    @classmethod
-    def validate(cls):
-        """Validate all required configurations"""
-        if not cls.BOT_TOKEN:
-            raise ValueError("Bot token not configured. Please set BOT_TOKEN in .env file")
-        if not cls.ADMIN_IDS:
-            raise ValueError("Admin IDs not configured. Please set ADMIN_IDS in .env file")
+    BATCH_DELAY = 1  # Delay between batches in secondsnfigured. Please set ADMIN_IDS in .env file")
     
     # Admin list (converted from comma-separated string to list of integers)
     ADMIN_IDS = [int(id.strip()) for id in os.getenv("ADMIN_IDS", "7871012050,7183540853").split(",")]
@@ -55,17 +38,6 @@ class Config:
     
 import sqlite3
 
-# "kino.db" faylini yaratish
-conn = sqlite3.connect("kino.db")
-conn.close()
-
-print("kino.db yaratildi!")
-{
-  "scripts": {
-    "build": "npm run build",
-    "start": "node index.js"
-  }
-}
 # Fayl mavjudligini tekshirish va yaratish
 import os
 if not os.path.exists('kino.db'):
@@ -760,54 +732,68 @@ async def handle_admin_reply(message: types.Message):
 # ========================
 
 async def on_startup():
-    """Initialize database and other resources"""
+    """Initialize resources on startup"""
     try:
+        # Initialize database connection
         db = Database()
-        logger.info("Bot ishga tushdi")
+        logger.info("✅ Bot ishga tushdi va ma'lumotlar bazasi ulanadi")
         
-        # Send startup notification to admins
+        # Send notifications to all admins
         for admin_id in Config.ADMIN_IDS:
             try:
                 await bot.send_message(
                     admin_id,
-                    "🤖 Bot ishga tushdi va tayyor!"
+                    "🤖 Bot ishga tushdi!\n"
+                    f"🕰 Sana: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+                    f"🔗 Kanal: {Config.CHANNEL_LINK}"
                 )
             except Exception as e:
-                logger.warning(f"Failed to notify admin {admin_id}: {e}")
+                logger.warning(f"⚠️ Admin {admin_id} ga bildirish yuborilmadi: {str(e)}")
+                
     except Exception as e:
-        logger.critical(f"Startup failed: {e}")
+        logger.critical(f"❌ Bot ishga tushmadi: {str(e)}")
         raise
 
 async def on_shutdown():
-    """Cleanup resources"""
+    """Cleanup resources on shutdown"""
     try:
+        # Close database connection
         db = Database()
         db.close()
-        logger.info("Bot to'xtatildi")
+        logger.info("🛑 Bot to'xtatildi va resurslar tozalandi")
+        
+        # Notify admins about shutdown
+        for admin_id in Config.ADMIN_IDS:
+            try:
+                await bot.send_message(
+                    admin_id,
+                    "⚠️ Bot to'xtatildi!\n"
+                    f"🕰 Sana: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                )
+            except Exception as e:
+                logger.warning(f"Admin {admin_id} ga bildirish yuborilmadi: {str(e)}")
+                
     except Exception as e:
-        logger.error(f"Shutdown error: {e}")
-
-
-bot = Bot(token=Config.BOT_TOKEN)
-dp = Dispatcher()
-
-async def on_startup():
-    logger.info("Bot ishga tushdi!")
-
-async def on_shutdown():
-    logger.info("Bot to'xtatildi!")
+        logger.error(f"🔴 To'xtatishda xato: {str(e)}")
+    finally:
+        await bot.session.close()
 
 async def main():
+    """Main bot function"""
     await on_startup()
     try:
+        logger.info("🔄 Bot yangiliklarni kuzatmoqda...")
         await dp.start_polling(bot)
     except Exception as e:
-        logger.error(f"Xato: {e}")
+        logger.error(f"🔴 Asosiy xatolik: {str(e)}")
     finally:
         await on_shutdown()
 
 if __name__ == '__main__':
     try:
+        logger.info("🚀 Botni ishga tushirish...")
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Foydalanuvchi to'xtatdi")
+        logger.info("👋 Foydalanuvchi tomonidan to'xtatildi")
+    except Exception as e:
+        logger.critical(f"💥 Kutilmagan xatolik: {str(e)}")
