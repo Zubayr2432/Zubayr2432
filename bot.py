@@ -769,20 +769,47 @@ async def on_startup():
         logger.critical(f"Startup failed: {e}")
         raise
 
-async def resilient_polling():
-    """Cheksiz qayta ishga tushirish mexanizmi"""
+async def main():
+    """Yaxshilangan asosiy bot funksiyasi"""
+    await on_startup()
+    
     while True:
         try:
-            await dp.start_polling(bot, skip_updates=True)
-        except Exception as e:
-            logger.error(f"Polling xatosi: {e}, 5 soniyadan keyin qayta uriniladi...")
+            logger.info("Bot yangiliklarni kuzatmoqda...")
+            await dp.start_polling(
+                bot,
+                skip_updates=True,
+                allowed_updates=dp.resolve_used_update_types(),
+                close_bot_session=False
+            )
+            
+        except (ConnectionError, aiohttp.ClientError) as e:
+            logger.error(f"Ulanish xatosi: {e}, 5 soniyadan keyin qayta urinilmoqda...")
             await asyncio.sleep(5)
-
-async def main():
-    """Asosiy funksiya"""
-    await on_startup()
-    await resilient_polling()
+            
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                logger.error("Ma'lumotlar bazasi bloklangan, 5 soniyadan keyin qayta urinilmoqda...")
+                await asyncio.sleep(5)
+            else:
+                logger.error(f"Database xatosi: {e}")
+                await asyncio.sleep(10)
+                
+        except Exception as e:
+            logger.error(f"Kutilmagan xatolik: {type(e).__name__}: {e}")
+            await asyncio.sleep(10)
 
 if __name__ == "__main__":
     logger.info("Botni ishga tushirish...")
-    asyncio.run(main())
+    
+    # Database connectionni yopishni ta'minlash
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot to'xtatildi (foydalanuvchi tomonidan)")
+    except Exception as e:
+        logger.critical(f"Botda kritik xatolik: {e}")
+    finally:
+        db = Database()
+        db.close()
+        logger.info("Bot to'liq to'xtatildi")
