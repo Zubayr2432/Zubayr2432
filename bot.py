@@ -781,13 +781,20 @@ async def on_shutdown():
 async def main():
     """Main bot function"""
     await on_startup()
-    try:
-        logger.info("🔄 Bot yangiliklarni kuzatmoqda...")
-        await dp.start_polling(bot)
-    except Exception as e:
-        logger.error(f"🔴 Asosiy xatolik: {str(e)}")
-    finally:
-        await on_shutdown()
+    while True:
+        try:
+            logger.info("🔄 Bot yangiliklarni kuzatmoqda...")
+            await dp.start_polling(bot, skip_updates=True)
+        except (ConnectionError, aiohttp.ClientError) as e:
+            logger.error(f"🔴 Ulanish xatosi: {e}, 5 soniyadan keyin qayta urinilmoqda...")
+            await asyncio.sleep(5)
+        except Exception as e:
+            logger.error(f"🔴 Kutilmagan xatolik: {e}")
+            await asyncio.sleep(1)
+            break
+        else:
+            break
+    await on_shutdown()
 
 if __name__ == '__main__':
     try:
@@ -796,4 +803,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logger.info("👋 Foydalanuvchi tomonidan to'xtatildi")
     except Exception as e:
-        logger.critical(f"💥 Kutilmagan xatolik: {str(e)}")
+        logger.critical(f"💥 Dasturdan tashqaridagi xatolik: {e}")
