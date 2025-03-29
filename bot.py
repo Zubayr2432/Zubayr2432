@@ -1,4 +1,3 @@
-
 import sqlite3
 import logging
 import time
@@ -773,19 +772,27 @@ async def on_shutdown():
     except Exception as e:
         logger.error(f"Shutdown error: {e}")
 
+
+bot = Bot(token=Config.BOT_TOKEN)
+dp = Dispatcher()
+
+async def on_startup():
+    logger.info("Bot ishga tushdi!")
+
+async def on_shutdown():
+    logger.info("Bot to'xtatildi!")
+
 async def main():
-    """Asosiy bot funksiyasi"""
-    await on_startup()  # Ishga tushirish funksiyasi
+    await on_startup()
     try:
         await dp.start_polling(bot)
+    except Exception as e:
+        logger.error(f"Xato: {e}")
     finally:
-        await on_shutdown()  # To'xtatish funksiyasi
+        await on_shutdown()
 
 if __name__ == '__main__':
     try:
-        print("Bot ishga tushmoqda...")
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Bot to'xtatildi")
-    except Exception as e:
-        print(f"Kutilmagan xato: {e}")
+        logger.info("Foydalanuvchi to'xtatdi")
