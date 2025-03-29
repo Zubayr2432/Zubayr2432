@@ -22,17 +22,22 @@ if os.name == 'nt':
     os.system('chcp 65001 > nul')  # CMD uchun UTF-8 kod sahifasi
 
 # Konfiguratsiya
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 class Config:
-    CHANNEL_USERNAME = "ajoyib_kino_kodlari1"
+    CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "ajoyib_kino_kodlari1")
     CHANNEL_LINK = f"https://t.me/{CHANNEL_USERNAME}"
-    CHANNEL_ID = -1002341118048
-    CHANNEL_USERNAME_sh = "+ZRxWtd33UQc5YzQy"
+    CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1002341118048"))
+    CHANNEL_USERNAME_sh = os.getenv("CHANNEL_USERNAME_sh", "+ZRxWtd33UQc5YzQy")
     CHANNEL_LINK_sh = f"https://t.me/{CHANNEL_USERNAME_sh}"
-    CHANNEL_ID_sh = -1002537276349
-    BOT_TOKEN = "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k"
-    ADMIN_IDS = [7871012050, 7183540853]
-    BATCH_SIZE = 30
-    BATCH_DELAY = 1
+    CHANNEL_ID_sh = int(os.getenv("CHANNEL_ID_sh", "-1002537276349"))
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k")
+    ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "7871012050,7183540853").split(",")]
+    BATCH_SIZE = int(os.getenv("BATCH_SIZE", "30"))
+    BATCH_DELAY = int(os.getenv("BATCH_DELAY", "1"))
 
 # Logging sozlamalari
 logging.basicConfig(
@@ -727,13 +732,46 @@ async def main():
     """Yaxshilangan asosiy bot funksiyasi"""
     await on_startup()
     
-    try:
-        logger.info("Bot yangiliklarni kuzatmoqda...")
-        await dp.start_polling(bot)
-    except Exception as e:
-        logger.critical(f"Botda kutilmagan xatolik: {e}")
-    finally:
-        await on_shutdown()
+    restart_delays = [1, 5, 10, 30, 60]  # Qayta urinishlar orasidagi kutish vaqtlari (sekundda)
+    restart_attempt = 0
+    
+    while True:
+        try:
+            logger.info("Bot yangiliklarni kuzatmoqda...")
+            await dp.start_polling(
+                bot,
+                skip_updates=True,
+                allowed_updates=dp.resolve_used_update_types(),
+                close_bot_session=False
+            )
+            break  # Agar polling to'xtasa, tsikldan chiqish
+            
+        except (ConnectionError, aiohttp.ClientError) as e:
+            delay = restart_delays[min(restart_attempt), len(restart_delays)-1]
+            logger.error(f"Ulanish xatosi: {e}, {delay} soniyadan keyin qayta urinilmoqda...")
+            await asyncio.sleep(delay)
+            restart_attempt += 1
+            
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                delay = 5  # DB lock uchun doimiy 5 soniya
+                logger.error(f"Ma'lumotlar bazasi bloklangan, {delay} soniyadan keyin qayta urinilmoqda...")
+            else:
+                delay = restart_delays[min(restart_attempt, len(restart_delays)-1)]
+                logger.error(f"Database xatosi: {e}, {delay} soniyadan keyin qayta urinilmoqda...")
+            await asyncio.sleep(delay)
+            restart_attempt += 1
+                
+        except Exception as e:
+            delay = restart_delays[min(restart_attempt, len(restart_delays)-1)]
+            logger.error(f"Kutilmagan xatolik: {type(e).__name__}: {e}, {delay} soniyadan keyin qayta urinilmoqda...")
+            await asyncio.sleep(delay)
+            restart_attempt += 1
+            
+        else:
+            # Agar xato bo'lmasa, restart counter ni nolga tushirish
+            restart_attempt = 0
+    await on_shutdown()
 
 async def on_startup():
     """Ishga tushganda"""
@@ -743,10 +781,11 @@ async def on_startup():
         
         # Internet ulanishini tekshirish
         try:
-            await bot.get_me()
+            me = await bot.get_me()
+            logger.info(f"Bot @{me.username} muvaffaqiyatli ulandi")
         except Exception as e:
             logger.error(f"Telegram API ga ulanib bo'lmadi: {e}")
-            return
+            raise
             
     except Exception as e:
         logger.critical(f"Startup failed: {e}")
@@ -757,11 +796,17 @@ async def on_shutdown():
     try:
         db = Database()
         db.close()
-        logger.info("Bot to'xtatildi")
+        logger.info("Ma'lumotlar bazasi ulanishi yopildi")
     except Exception as e:
-        logger.error(f"Shutdown error: {e}")
-    finally:
+        logger.error(f"DB shutdown error: {e}")
+    
+    try:
         await bot.session.close()
+        logger.info("Bot sessiyasi yopildi")
+    except Exception as e:
+        logger.error(f"Session close error: {e}")
+    
+    logger.info("Bot to'xtatildi")
 
 if __name__ == "__main__":
     try:
@@ -769,7 +814,5 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Foydalanuvchi tomonidan to'xtatildi")
-        asyncio.run(on_shutdown())
     except Exception as e:
         logger.critical(f"Dasturdan tashqaridagi xatolik: {e}")
-        asyncio.run(on_shutdown())
