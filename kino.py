@@ -5,7 +5,7 @@ import sqlite3
 import logging
 from datetime import datetime
 import asyncio
-import aiohttp  # Yangi import qo'shildi
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F, Router 
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -728,11 +728,13 @@ async def handle_admin_reply(message: types.Message):
 # ========================
 
 # Asosiy bot funksiyasi
-async def main():
-    """Yaxshilangan asosiy bot funksiyasi"""
-    await on_startup()
-    
-    restart_delays = [1, 5, 10, 30, 60]  # Qayta urinishlar orasidagi kutish vaqtlari (sekundda)
+# Healthcheck endpoint
+async def health_check(request):
+    return web.Response(text="OK", status=200)
+
+async def start_bot():
+    """Main bot polling function with restart logic"""
+    restart_delays = [1, 5, 10, 30, 60]
     restart_attempt = 0
     
     while True:
@@ -744,7 +746,7 @@ async def main():
                 allowed_updates=dp.resolve_used_update_types(),
                 close_bot_session=False
             )
-            break  # Agar polling to'xtasa, tsikldan chiqish
+            break
             
         except (ConnectionError, aiohttp.ClientError) as e:
             delay = restart_delays[min(restart_attempt), len(restart_delays)-1]
@@ -754,45 +756,41 @@ async def main():
             
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e):
-                delay = 5  # DB lock uchun doimiy 5 soniya
+                delay = 5
                 logger.error(f"Ma'lumotlar bazasi bloklangan, {delay} soniyadan keyin qayta urinilmoqda...")
             else:
-                delay = restart_delays[min(restart_attempt, len(restart_delays)-1)]
+                delay = restart_delays[min(restart_attempt), len(restart_delays)-1]
                 logger.error(f"Database xatosi: {e}, {delay} soniyadan keyin qayta urinilmoqda...")
             await asyncio.sleep(delay)
             restart_attempt += 1
                 
         except Exception as e:
-            delay = restart_delays[min(restart_attempt, len(restart_delays)-1)]
+            delay = restart_delays[min(restart_attempt), len(restart_delays)-1]
             logger.error(f"Kutilmagan xatolik: {type(e).__name__}: {e}, {delay} soniyadan keyin qayta urinilmoqda...")
             await asyncio.sleep(delay)
             restart_attempt += 1
             
         else:
-            # Agar xato bo'lmasa, restart counter ni nolga tushirish
             restart_attempt = 0
-    await on_shutdown()
 
-async def on_startup():
-    """Ishga tushganda"""
+async def on_app_startup(app):
+    """Application startup handler"""
     try:
         db = Database()
         logger.info("Bot ishga tushdi")
         
-        # Internet ulanishini tekshirish
-        try:
-            me = await bot.get_me()
-            logger.info(f"Bot @{me.username} muvaffaqiyatli ulandi")
-        except Exception as e:
-            logger.error(f"Telegram API ga ulanib bo'lmadi: {e}")
-            raise
+        me = await bot.get_me()
+        logger.info(f"Bot @{me.username} muvaffaqiyatli ulandi")
+        
+        # Start bot in background
+        asyncio.create_task(start_bot())
             
     except Exception as e:
         logger.critical(f"Startup failed: {e}")
         raise
 
-async def on_shutdown():
-    """To'xtatishda"""
+async def on_app_shutdown(app):
+    """Application shutdown handler"""
     try:
         db = Database()
         db.close()
@@ -808,6 +806,20 @@ async def on_shutdown():
     
     logger.info("Bot to'xtatildi")
 
+def main():
+    # Create web application
+    app = web.Application()
+    app.router.add_get("/health", health_check)
+    
+    # Setup startup and shutdown handlers
+    app.on_startup.append(on_app_startup)
+    app.on_shutdown.append(on_app_shutdown)
+    
+    # Get port from environment or use default 8000
+    port = int(os.environ.get("PORT", 8000))
+    
+    # Run web application
+    web.run_app(app, port=port, handle_signals=True)
 if __name__ == "__main__":
     try:
         logger.info("Botni ishga tushirish...")
