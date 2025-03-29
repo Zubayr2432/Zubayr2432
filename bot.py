@@ -14,19 +14,31 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message, ForceRep
 from aiogram.enums import ParseMode
 import os
 from dotenv import load_dotenv
+from typing import List
+
 load_dotenv()
-# Enhanced configuration with type hints and better organization
+
 class Config:
-    CHANNEL_USERNAME = "ajoyib_kino_kodlari1"
+    # Channel configurations
+    CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "ajoyib_kino_kodlari1")
     CHANNEL_LINK = f"https://t.me/{CHANNEL_USERNAME}"
-    CHANNEL_ID = -1002341118048
-    CHANNEL_USERNAME_sh = "+ZRxWtd33UQc5YzQy"  # Hidden channel
+    CHANNEL_ID = int(os.getenv("CHANNEL_ID", -1002341118048))
+    
+    # Hidden channel configurations
+    CHANNEL_USERNAME_sh = os.getenv("HIDDEN_CHANNEL_USERNAME", "+ZRxWtd33UQc5YzQy")
     CHANNEL_LINK_sh = f"https://t.me/{CHANNEL_USERNAME_sh}"
-    CHANNEL_ID_sh = -1002537276349
-    BOT_TOKEN = os.getenv("BOT_TOKEN") or "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k"
-    ADMIN_IDS = [7871012050, 7183540853]  # Admins list
+    CHANNEL_ID_sh = int(os.getenv("HIDDEN_CHANNEL_ID", -1002537276349))
+    
+    # Bot configuration
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+    
+    # Admin list (converted from comma-separated string to list of integers)
+    ADMIN_IDS = [int(id.strip()) for id in os.getenv("ADMIN_IDS", "7871012050,7183540853").split(",")]
+    
+    # Performance settings
     BATCH_SIZE = 30  # For bulk operations
     BATCH_DELAY = 1  # Delay between batches in seconds
+    
 import sqlite3
 
 # "kino.db" faylini yaratish
