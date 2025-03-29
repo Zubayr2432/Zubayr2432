@@ -1,3 +1,6 @@
+import sys
+import os
+import time
 import sqlite3
 import logging
 from datetime import datetime
@@ -11,40 +14,45 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message, ForceReply
 from aiogram.enums import ParseMode
 
-# Enhanced configuration with type hints and better organization
+# Windows uchun kod sahifasini UTF-8 ga o'rnatish
+if os.name == 'nt':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+    os.system('chcp 65001 > nul')  # CMD uchun UTF-8 kod sahifasi
+
+# Konfiguratsiya
 class Config:
     CHANNEL_USERNAME = "ajoyib_kino_kodlari1"
     CHANNEL_LINK = f"https://t.me/{CHANNEL_USERNAME}"
     CHANNEL_ID = -1002341118048
-    CHANNEL_USERNAME_sh = "+ZRxWtd33UQc5YzQy"  # Hidden channel
+    CHANNEL_USERNAME_sh = "+ZRxWtd33UQc5YzQy"
     CHANNEL_LINK_sh = f"https://t.me/{CHANNEL_USERNAME_sh}"
     CHANNEL_ID_sh = -1002537276349
     BOT_TOKEN = "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k"
-    ADMIN_IDS = [7871012050, 7183540853]  # Admins list
-    BATCH_SIZE = 30  # For bulk operations
-    BATCH_DELAY = 1  # Delay between batches in seconds
+    ADMIN_IDS = [7871012050, 7183540853]
+    BATCH_SIZE = 30
+    BATCH_DELAY = 1
 
-# Improved logging setup
+# Logging sozlamalari
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler()
+        logging.FileHandler('bot.log', encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
 
-# Initialize bot with better error handling
+# Botni ishga tushirish
 try:
     bot = Bot(token=Config.BOT_TOKEN, parse_mode=ParseMode.HTML)
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     router = Router()
 except Exception as e:
-    logger.critical(f"Failed to initialize bot: {e}")
+    logger.critical(f"Botni ishga tushirishda xatolik: {e}")
     raise
-
 # Database class with connection pooling and better error handling
 class Database:
     _instance = None
@@ -713,34 +721,72 @@ async def handle_admin_reply(message: types.Message):
 # BOT MANAGEMENT
 # ========================
 
+# Asosiy bot funksiyasi
+async def main():
+    """Yaxshilangan asosiy bot funksiyasi"""
+    await on_startup()
+    
+    while True:  # Cheksiz tsikl
+        try:
+            logger.info("Bot yangiliklarni kuzatmoqda...")
+            await dp.start_polling(
+                bot,
+                skip_updates=True,
+                allowed_updates=dp.resolve_used_update_types(),
+                close_bot_session=False
+            )
+            
+        except (ConnectionError, aiohttp.ClientError) as e:
+            logger.error(f"Ulanish xatosi: {e}, 5 soniyadan keyin qayta urinilmoqda...")
+            await asyncio.sleep(5)
+            
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                logger.error("Ma'lumotlar bazasi bloklangan, 5 soniyadan keyin qayta urinilmoqda...")
+                await asyncio.sleep(5)
+            else:
+                logger.error(f"Database xatosi: {e}")
+                await asyncio.sleep(10)
+                
+        except Exception as e:
+            logger.error(f"Kutilmagan xatolik: {type(e).__name__}: {e}")
+            await asyncio.sleep(10)
+
 async def on_startup():
-    """Initialize database and other resources"""
+    """Ishga tushganda"""
     try:
         db = Database()
         logger.info("Bot ishga tushdi")
         
-        # Send startup notification to admins
-        for admin_id in Config.ADMIN_IDS:
-            try:
-                await bot.send_message(
-                    admin_id,
-                    "🤖 Bot ishga tushdi va tayyor!"
-                )
-            except Exception as e:
-                logger.warning(f"Failed to notify admin {admin_id}: {e}")
+        # Internet ulanishini tekshirish
+        try:
+            await bot.get_me()
+        except Exception as e:
+            logger.error(f"Telegram API ga ulanib bo'lmadi: {e}")
+            return
+            
     except Exception as e:
         logger.critical(f"Startup failed: {e}")
         raise
 
 async def on_shutdown():
-    """Cleanup resources"""
+    """To'xtatishda"""
     try:
         db = Database()
         db.close()
         logger.info("Bot to'xtatildi")
     except Exception as e:
         logger.error(f"Shutdown error: {e}")
+    finally:
+        await bot.session.close()
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    
+    try:
+        logger.info("Botni ishga tushirish...")
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Foydalanuvchi tomonidan to'xtatildi")
+        asyncio.run(on_shutdown())
+    except Exception as e:
+        logger.critical(f"Dasturdan tashqaridagi xatolik: {e}")
+        asyncio.run(on_shutdown())
