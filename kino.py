@@ -5,6 +5,7 @@ import sqlite3
 import logging
 from datetime import datetime
 import asyncio
+import aiohttp
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F, Router 
 from aiogram.filters import Command, CommandStart
@@ -730,10 +731,11 @@ async def handle_admin_reply(message: types.Message):
 # Asosiy bot funksiyasi
 # Healthcheck endpoint
 async def health_check(request):
+    """Simple healthcheck that returns 200 OK"""
     return web.Response(text="OK", status=200)
 
 async def start_bot():
-    """Main bot polling function with restart logic"""
+    """Main bot polling function with enhanced restart logic"""
     restart_delays = [1, 5, 10, 30, 60]
     restart_attempt = 0
     
@@ -773,10 +775,10 @@ async def start_bot():
         else:
             restart_attempt = 0
 
-async def on_app_startup(app):
-    """Application startup handler"""
+async def on_startup(app):
+    """Application startup handler with database initialization"""
     try:
-        db = Database()
+        db = Database()  # Your database initialization
         logger.info("Bot ishga tushdi")
         
         me = await bot.get_me()
@@ -789,8 +791,8 @@ async def on_app_startup(app):
         logger.critical(f"Startup failed: {e}")
         raise
 
-async def on_app_shutdown(app):
-    """Application shutdown handler"""
+async def on_shutdown(app):
+    """Application shutdown handler with proper cleanup"""
     try:
         db = Database()
         db.close()
@@ -806,24 +808,18 @@ async def on_app_shutdown(app):
     
     logger.info("Bot to'xtatildi")
 
-def main():
-    # Create web application
+def init_app():
+    """Initialize web application with routes and handlers"""
     app = web.Application()
     app.router.add_get("/health", health_check)
-    
-    # Setup startup and shutdown handlers
-    app.on_startup.append(on_app_startup)
-    app.on_shutdown.append(on_app_shutdown)
-    
-    # Get port from environment or use default 8000
-    port = int(os.environ.get("PORT", 8000))
-    
-    # Run web application
-    web.run_app(app, port=port, handle_signals=True)
+    app.on_startup.append(on_startup)
+    app.on_shutdown.append(on_shutdown)
+    return app
+
 if __name__ == "__main__":
     try:
-        logger.info("Botni ishga tushirish...")
-        asyncio.run(main())
+        port = int(os.environ.get("PORT", 8000))
+        web.run_app(init_app(), port=port, handle_signals=True)
     except KeyboardInterrupt:
         logger.info("Foydalanuvchi tomonidan to'xtatildi")
     except Exception as e:
