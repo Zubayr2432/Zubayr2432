@@ -9,6 +9,7 @@
     "startCommand": "python3 kino.py",
     "restartPolicyType": "ALWAYS",
     "healthcheckPath": "/health",
-    "healthcheckTimeout": 30
+    "healthcheckTimeout": 60,
+    "healthcheckInterval": 10
   }
 }
