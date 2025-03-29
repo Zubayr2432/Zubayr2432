@@ -765,54 +765,47 @@ async def on_shutdown():
 
 # Yangi improved main() funksiya bu erga qo'yiladi
 async def main():
-    """Main bot function with improved stability"""
+    """Yaxshilangan asosiy bot funksiyasi"""
     await on_startup()
     
-    restart_attempts = 0
-    max_restart_attempts = 5
-    
-    while restart_attempts < max_restart_attempts:
+    while True:  # Cheksiz tsikl
         try:
             logger.info("🔄 Bot yangiliklarni kuzatmoqda...")
             await dp.start_polling(
-                bot, 
+                bot,
                 skip_updates=True,
                 allowed_updates=dp.resolve_used_update_types(),
-                close_bot_session=False  # Sessionni o'zimiz boshqaramiz
+                close_bot_session=False
             )
             
         except (ConnectionError, aiohttp.ClientError) as e:
-            restart_attempts += 1
-            wait_time = min(2 ** restart_attempts, 30)  # Exponential backoff
-            logger.error(f"🔴 Ulanish xatosi: {e}, {wait_time} soniyadan keyin qayta urinilmoqda...")
-            await asyncio.sleep(wait_time)
+            logger.error(f"🔴 Ulanish xatosi: {e}, 5 soniyadan keyin qayta urinilmoqda...")
+            await asyncio.sleep(5)
             
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e):
-                restart_attempts += 1
-                wait_time = 5
-                logger.error(f"🔴 Ma'lumotlar bazasi bloklangan, {wait_time} soniyadan keyin qayta urinilmoqda...")
-                await asyncio.sleep(wait_time)
+                logger.error("🔴 Ma'lumotlar bazasi bloklangan, 5 soniyadan keyin qayta urinilmoqda...")
+                await asyncio.sleep(5)
             else:
-                logger.critical(f"💥 Database xatosi: {e}")
-                break
+                logger.error(f"💥 Database xatosi: {e}")
+                await asyncio.sleep(10)
                 
-        except asyncio.CancelledError:
-            logger.info("🛑 Bot to'xtatish so'rovi qabul qilindi")
-            break
-            
         except Exception as e:
-            logger.critical(f"💥 Kutilmagan xatolik: {type(e).__name__}: {e}")
-            restart_attempts += 1
-            wait_time = 10
-            await asyncio.sleep(wait_time)
+            logger.error(f"💥 Kutilmagan xatolik: {type(e).__name__}: {e}")
+            await asyncio.sleep(10)
             
-        else:
-            # Agar normal holatda chiqib ketsa
-            break
-            
-    await on_shutdown()
+        # Agar polling to'xtasa, avtomatik ravishda qayta ishga tushadi
 
+async def on_shutdown():
+    """Resurslarni tozalash"""
+    try:
+        db = Database()
+        db.close()
+        logger.info("✅ Resurslar tozalandi")
+    except Exception as e:
+        logger.error(f"🔴 To'xtatishda xato: {str(e)}")
+    finally:
+        await bot.session.close()
 
 if __name__ == '__main__':
     try:
@@ -820,5 +813,7 @@ if __name__ == '__main__':
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("👋 Foydalanuvchi tomonidan to'xtatildi")
+        asyncio.run(on_shutdown())
     except Exception as e:
         logger.critical(f"💥 Dasturdan tashqaridagi xatolik: {e}")
+        asyncio.run(on_shutdown())
