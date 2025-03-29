@@ -726,53 +726,6 @@ async def main():
     """Yaxshilangan asosiy bot funksiyasi"""
     await on_startup()
     
-    while True:  # Cheksiz tsikl
-        try:
-            logger.info("Bot yangiliklarni kuzatmoqda...")
-            await dp.start_polling(
-                bot,
-                skip_updates=True,
-                allowed_updates=dp.resolve_used_update_types(),
-                close_bot_session=False
-            )
-            
-        except (ConnectionError, aiohttp.ClientError) as e:
-            logger.error(f"Ulanish xatosi: {e}, 5 soniyadan keyin qayta urinilmoqda...")
-            await asyncio.sleep(5)
-            
-        except sqlite3.OperationalError as e:
-            if "database is locked" in str(e):
-                logger.error("Ma'lumotlar bazasi bloklangan, 5 soniyadan keyin qayta urinilmoqda...")
-                await asyncio.sleep(5)
-            else:
-                logger.error(f"Database xatosi: {e}")
-                await asyncio.sleep(10)
-                
-        except Exception as e:
-            logger.error(f"Kutilmagan xatolik: {type(e).__name__}: {e}")
-            await asyncio.sleep(10)
-
-async def on_startup():
-    """Ishga tushganda"""
-    try:
-        db = Database()
-        logger.info("Bot ishga tushdi")
-        
-        # Internet ulanishini tekshirish
-        try:
-            await bot.get_me()
-        except Exception as e:
-            logger.error(f"Telegram API ga ulanib bo'lmadi: {e}")
-            return
-            
-    except Exception as e:
-        logger.critical(f"Startup failed: {e}")
-        raise
-
-async def main():
-    """Yaxshilangan asosiy bot funksiyasi"""
-    await on_startup()
-    
     while True:
         try:
             logger.info("Bot yangiliklarni kuzatmoqda...")
