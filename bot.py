@@ -3,7 +3,6 @@ import os
 import time
 import sqlite3
 import logging
-import  aiohttp
 from datetime import datetime
 import asyncio
 from aiogram import Bot, Dispatcher, types, F, Router 
@@ -723,20 +722,71 @@ async def handle_admin_reply(message: types.Message):
 # ========================
 
 # Asosiy bot funksiyasi
-async def resilient_polling():
-    """Cheksiz qayta ishga tushirish mexanizmi"""
-    while True:
-        try:
-            await dp.start_polling(bot, skip_updates=True)
-        except Exception as e:
-            logger.error(f"Polling xatosi: {e}, 5 soniyadan keyin qayta uriniladi...")
-            await asyncio.sleep(5)
-
 async def main():
-    """Asosiy funksiya"""
+    """Yaxshilangan asosiy bot funksiyasi"""
     await on_startup()
-    await resilient_polling()
+    
+    while True:  # Cheksiz tsikl
+        try:
+            logger.info("Bot yangiliklarni kuzatmoqda...")
+            await dp.start_polling(
+                bot,
+                skip_updates=True,
+                allowed_updates=dp.resolve_used_update_types(),
+                close_bot_session=False
+            )
+            
+        except (ConnectionError, aiohttp.ClientError) as e:
+            logger.error(f"Ulanish xatosi: {e}, 5 soniyadan keyin qayta urinilmoqda...")
+            await asyncio.sleep(5)
+            
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                logger.error("Ma'lumotlar bazasi bloklangan, 5 soniyadan keyin qayta urinilmoqda...")
+                await asyncio.sleep(5)
+            else:
+                logger.error(f"Database xatosi: {e}")
+                await asyncio.sleep(10)
+                
+        except Exception as e:
+            logger.error(f"Kutilmagan xatolik: {type(e).__name__}: {e}")
+            await asyncio.sleep(10)
+
+async def on_startup():
+    """Ishga tushganda"""
+    try:
+        db = Database()
+        logger.info("Bot ishga tushdi")
+        
+        # Internet ulanishini tekshirish
+        try:
+            await bot.get_me()
+        except Exception as e:
+            logger.error(f"Telegram API ga ulanib bo'lmadi: {e}")
+            return
+            
+    except Exception as e:
+        logger.critical(f"Startup failed: {e}")
+        raise
+
+async def on_shutdown():
+    """To'xtatishda"""
+    try:
+        db = Database()
+        db.close()
+        logger.info("Bot to'xtatildi")
+    except Exception as e:
+        logger.error(f"Shutdown error: {e}")
+    finally:
+        await bot.session.close()
 
 if __name__ == "__main__":
-    logger.info("Botni ishga tushirish...")
-    asyncio.run(main())
+    try:
+        logger.info("Botni ishga tushirish...")
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Foydalanuvchi tomonidan to'xtatildi")
+        asyncio.run(on_shutdown())
+    except Exception as e:
+        logger.critical(f"Dasturdan tashqaridagi xatolik: {e}")
+        asyncio.run(on_shutdown())
