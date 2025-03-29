@@ -3,6 +3,7 @@ import os
 import time
 import sqlite3
 import logging
+import  aiohttp
 from datetime import datetime
 import asyncio
 from aiogram import Bot, Dispatcher, types, F, Router 
@@ -724,7 +725,7 @@ async def handle_admin_reply(message: types.Message):
 # Asosiy bot funksiyasi
 async def main():
     """Yaxshilangan asosiy bot funksiyasi"""
-    await on_startup()
+  
     
     while True:
         try:
