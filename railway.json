@@ -6,7 +6,7 @@
   },
   "deploy": {
     "runtime": "PYTHON",
-    "startCommand": "python bot.py",
+    "startCommand": "python kino.py",
     "restartPolicyType": "ALWAYS",
     "restartPolicyMaxRetries": 10
   }
