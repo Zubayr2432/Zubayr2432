@@ -1,0 +1,14 @@
+{
+  "buildCommand": "pip install -r requirements.txt",
+  "startCommand": "python kino.py",
+  "variables": {
+    "BOT_TOKEN": {
+      "description": "Telegram bot tokeni",
+      "required": true
+    },
+    "ADMIN_IDS": {
+      "description": "Adminlar ID raqamlari (vergul bilan ajratilgan)",
+      "required": true
+    }
+  }
+}
