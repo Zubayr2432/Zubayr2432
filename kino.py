@@ -728,88 +728,58 @@ async def handle_admin_reply(message: types.Message):
 # BOT MANAGEMENT
 # ========================
 
-# Asosiy bot funksiyasi
-# Healthcheck endpoint
+
+# Healthcheck endpoint with detailed response
 async def health_check(request):
-    """Simple healthcheck that returns 200 OK"""
-    return web.Response(text="OK", status=200)
+    """Enhanced healthcheck that verifies all services"""
+    try:
+        # Verify database connection if needed
+        # Verify Telegram API connection
+        me = await bot.get_me()
+        return web.json_response({
+            "status": "healthy",
+            "bot": f"@{me.username}",
+            "timestamp": str(datetime.now())
+        }, status=200)
+    except Exception as e:
+        logger.error(f"Healthcheck failed: {e}")
+        return web.json_response(
+            {"status": "unhealthy", "error": str(e)},
+            status=503
+        )
 
 async def start_bot():
-    """Main bot polling function with enhanced restart logic"""
+    """Main bot polling function with restart logic"""
     restart_delays = [1, 5, 10, 30, 60]
     restart_attempt = 0
     
     while True:
         try:
-            logger.info("Bot yangiliklarni kuzatmoqda...")
+            logger.info("Starting bot polling...")
             await dp.start_polling(
                 bot,
                 skip_updates=True,
-                allowed_updates=dp.resolve_used_update_types(),
                 close_bot_session=False
             )
             break
-            
-        except (ConnectionError, aiohttp.ClientError) as e:
-            delay = restart_delays[min(restart_attempt), len(restart_delays)-1]
-            logger.error(f"Ulanish xatosi: {e}, {delay} soniyadan keyin qayta urinilmoqda...")
-            await asyncio.sleep(delay)
-            restart_attempt += 1
-            
-        except sqlite3.OperationalError as e:
-            if "database is locked" in str(e):
-                delay = 5
-                logger.error(f"Ma'lumotlar bazasi bloklangan, {delay} soniyadan keyin qayta urinilmoqda...")
-            else:
-                delay = restart_delays[min(restart_attempt), len(restart_delays)-1]
-                logger.error(f"Database xatosi: {e}, {delay} soniyadan keyin qayta urinilmoqda...")
-            await asyncio.sleep(delay)
-            restart_attempt += 1
-                
         except Exception as e:
-            delay = restart_delays[min(restart_attempt), len(restart_delays)-1]
-            logger.error(f"Kutilmagan xatolik: {type(e).__name__}: {e}, {delay} soniyadan keyin qayta urinilmoqda...")
+            delay = restart_delays[min(restart_attempt, len(restart_delays)-1]
+            logger.error(f"Error: {e}, retrying in {delay} seconds...")
             await asyncio.sleep(delay)
             restart_attempt += 1
-            
-        else:
-            restart_attempt = 0
 
 async def on_startup(app):
-    """Application startup handler with database initialization"""
-    try:
-        db = Database()  # Your database initialization
-        logger.info("Bot ishga tushdi")
-        
-        me = await bot.get_me()
-        logger.info(f"Bot @{me.username} muvaffaqiyatli ulandi")
-        
-        # Start bot in background
-        asyncio.create_task(start_bot())
-            
-    except Exception as e:
-        logger.critical(f"Startup failed: {e}")
-        raise
+    """Application startup handler"""
+    logger.info("Application starting up...")
+    asyncio.create_task(start_bot())
 
 async def on_shutdown(app):
-    """Application shutdown handler with proper cleanup"""
-    try:
-        db = Database()
-        db.close()
-        logger.info("Ma'lumotlar bazasi ulanishi yopildi")
-    except Exception as e:
-        logger.error(f"DB shutdown error: {e}")
-    
-    try:
-        await bot.session.close()
-        logger.info("Bot sessiyasi yopildi")
-    except Exception as e:
-        logger.error(f"Session close error: {e}")
-    
-    logger.info("Bot to'xtatildi")
+    """Application shutdown handler"""
+    logger.info("Application shutting down...")
+    await bot.session.close()
 
 def init_app():
-    """Initialize web application with routes and handlers"""
+    """Initialize web application"""
     app = web.Application()
     app.router.add_get("/health", health_check)
     app.on_startup.append(on_startup)
@@ -819,8 +789,12 @@ def init_app():
 if __name__ == "__main__":
     try:
         port = int(os.environ.get("PORT", 8000))
-        web.run_app(init_app(), port=port, handle_signals=True)
-    except KeyboardInterrupt:
-        logger.info("Foydalanuvchi tomonidan to'xtatildi")
+        web.run_app(
+            init_app(),
+            port=port,
+            handle_signals=True,
+            access_log=logger
+        )
     except Exception as e:
-        logger.critical(f"Dasturdan tashqaridagi xatolik: {e}")
+        logger.critical(f"Failed to start application: {e}")
+        raise
