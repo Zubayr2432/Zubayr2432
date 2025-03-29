@@ -5,6 +5,7 @@ import sqlite3
 import logging
 from datetime import datetime
 import asyncio
+import aiohttp  # Yangi import qo'shildi
 from aiogram import Bot, Dispatcher, types, F, Router 
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -726,31 +727,13 @@ async def main():
     """Yaxshilangan asosiy bot funksiyasi"""
     await on_startup()
     
-    while True:  # Cheksiz tsikl
-        try:
-            logger.info("Bot yangiliklarni kuzatmoqda...")
-            await dp.start_polling(
-                bot,
-                skip_updates=True,
-                allowed_updates=dp.resolve_used_update_types(),
-                close_bot_session=False
-            )
-            
-        except (ConnectionError, aiohttp.ClientError) as e:
-            logger.error(f"Ulanish xatosi: {e}, 5 soniyadan keyin qayta urinilmoqda...")
-            await asyncio.sleep(5)
-            
-        except sqlite3.OperationalError as e:
-            if "database is locked" in str(e):
-                logger.error("Ma'lumotlar bazasi bloklangan, 5 soniyadan keyin qayta urinilmoqda...")
-                await asyncio.sleep(5)
-            else:
-                logger.error(f"Database xatosi: {e}")
-                await asyncio.sleep(10)
-                
-        except Exception as e:
-            logger.error(f"Kutilmagan xatolik: {type(e).__name__}: {e}")
-            await asyncio.sleep(10)
+    try:
+        logger.info("Bot yangiliklarni kuzatmoqda...")
+        await dp.start_polling(bot)
+    except Exception as e:
+        logger.critical(f"Botda kutilmagan xatolik: {e}")
+    finally:
+        await on_shutdown()
 
 async def on_startup():
     """Ishga tushganda"""
