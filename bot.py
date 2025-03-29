@@ -769,17 +769,19 @@ async def on_startup():
         logger.critical(f"Startup failed: {e}")
         raise
 
-async def main():
-    """Asosiy bot funksiyasi - cheksiz tsikl"""
-    await on_startup()
-    
+async def resilient_polling():
+    """Cheksiz qayta ishga tushirish mexanizmi"""
     while True:
         try:
-            logger.info("Bot yangiliklarni kuzatmoqda...")
             await dp.start_polling(bot, skip_updates=True)
         except Exception as e:
-            logger.error(f"Xatolik yuz berdi: {e}, 10 soniyadan keyin qayta uriniladi...")
-            await asyncio.sleep(10)
+            logger.error(f"Polling xatosi: {e}, 5 soniyadan keyin qayta uriniladi...")
+            await asyncio.sleep(5)
+
+async def main():
+    """Asosiy funksiya"""
+    await on_startup()
+    await resilient_polling()
 
 if __name__ == "__main__":
     logger.info("Botni ishga tushirish...")
