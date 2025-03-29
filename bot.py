@@ -769,24 +769,18 @@ async def on_startup():
         logger.critical(f"Startup failed: {e}")
         raise
 
-async def on_shutdown():
-    """To'xtatishda"""
-    try:
-        db = Database()
-        db.close()
-        logger.info("Bot to'xtatildi")
-    except Exception as e:
-        logger.error(f"Shutdown error: {e}")
-    finally:
-        await bot.session.close()
+async def main():
+    """Asosiy bot funksiyasi - cheksiz tsikl"""
+    await on_startup()
+    
+    while True:
+        try:
+            logger.info("Bot yangiliklarni kuzatmoqda...")
+            await dp.start_polling(bot, skip_updates=True)
+        except Exception as e:
+            logger.error(f"Xatolik yuz berdi: {e}, 10 soniyadan keyin qayta uriniladi...")
+            await asyncio.sleep(10)
 
 if __name__ == "__main__":
-    try:
-        logger.info("Botni ishga tushirish...")
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Foydalanuvchi tomonidan to'xtatildi")
-        asyncio.run(on_shutdown())
-    except Exception as e:
-        logger.critical(f"Dasturdan tashqaridagi xatolik: {e}")
-        asyncio.run(on_shutdown())
+    logger.info("Botni ishga tushirish...")
+    asyncio.run(main())
