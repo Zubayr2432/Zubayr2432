@@ -1,14 +1,13 @@
 {
-  "buildCommand": "pip install -r requirements.txt",
-  "startCommand": "python kino.py",
-  "variables": {
-    "BOT_TOKEN": {
-      "description": "Telegram bot tokeni",
-      "required": true
-    },
-    "ADMIN_IDS": {
-      "description": "Adminlar ID raqamlari (vergul bilan ajratilgan)",
-      "required": true
-    }
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "pip install -r requirements.txt"
+  },
+  "deploy": {
+    "runtime": "PYTHON",
+    "startCommand": "python bot.py",
+    "restartPolicyType": "ALWAYS",
+    "restartPolicyMaxRetries": 10
   }
 }
