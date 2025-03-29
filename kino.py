@@ -40,17 +40,18 @@ class Config:
     BATCH_SIZE = int(os.getenv("BATCH_SIZE", "30"))
     BATCH_DELAY = int(os.getenv("BATCH_DELAY", "1"))
 
-# Logging sozlamalari
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('bot.log', encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
+        logging.StreamHandler(),
+        logging.FileHandler('bot.log')
     ]
 )
 logger = logging.getLogger(__name__)
 
+# Initialize bot
 # Botni ishga tushirish
 try:
     bot = Bot(token=Config.BOT_TOKEN, parse_mode=ParseMode.HTML)
@@ -728,73 +729,70 @@ async def handle_admin_reply(message: types.Message):
 # BOT MANAGEMENT
 # ========================
 
+# Asosiy bot funksiyasi
+# Initialize bot
+bot = Bot(token=os.getenv("BOT_TOKEN"))
+dp = Dispatcher()
 
-# Healthcheck endpoint with detailed response
-async def health_check(request):
-    """Enhanced healthcheck that verifies all services"""
+async def check_services():
+    """Verify all required services are available"""
     try:
-        # Verify database connection if needed
-        # Verify Telegram API connection
+        # Check Telegram API connection
         me = await bot.get_me()
-        return web.json_response({
-            "status": "healthy",
-            "bot": f"@{me.username}",
-            "timestamp": str(datetime.now())
-        }, status=200)
+        return True, {"bot": f"@{me.username}"}
     except Exception as e:
-        logger.error(f"Healthcheck failed: {e}")
-        return web.json_response(
-            {"status": "unhealthy", "error": str(e)},
-            status=503
-        )
+        logger.error(f"Service check failed: {e}")
+        return False, {"error": str(e)}
 
-async def start_bot():
-    """Main bot polling function with restart logic"""
-    restart_delays = [1, 5, 10, 30, 60]
-    restart_attempt = 0
-    
-    while True:
-        try:
-            logger.info("Starting bot polling...")
-            await dp.start_polling(
-                bot,
-                skip_updates=True,
-                close_bot_session=False
-            )
-            break
-        except Exception as e:
-            delay = restart_delays[min(restart_attempt, len(restart_delays)-1]
-            logger.error(f"Error: {e}, retrying in {delay} seconds...")
-            await asyncio.sleep(delay)
-            restart_attempt += 1
+async def health_check(request):
+    """Comprehensive healthcheck endpoint"""
+    healthy, details = await check_services()
+    status = 200 if healthy else 503
+    response = {
+        "status": "healthy" if healthy else "unhealthy",
+        "timestamp": datetime.now().isoformat(),
+        "services": details
+    }
+    return web.json_response(response, status=status)
 
-async def on_startup(app):
-    """Application startup handler"""
-    logger.info("Application starting up...")
-    asyncio.create_task(start_bot())
-
-async def on_shutdown(app):
-    """Application shutdown handler"""
-    logger.info("Application shutting down...")
-    await bot.session.close()
-
-def init_app():
-    """Initialize web application"""
+async def start_web_server():
+    """Start the web server separately from bot"""
     app = web.Application()
     app.router.add_get("/health", health_check)
-    app.on_startup.append(on_startup)
-    app.on_shutdown.append(on_shutdown)
-    return app
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', int(os.getenv("PORT", 8000)))
+    await site.start()
+    logger.info(f"Healthcheck server running on port {os.getenv('PORT', 8000)}")
+    return runner
+
+async def start_bot():
+    """Main bot polling function"""
+    try:
+        logger.info("Starting bot polling...")
+        await dp.start_polling(bot, skip_updates=True)
+    except Exception as e:
+        logger.error(f"Bot polling error: {e}")
+        raise
+
+async def main():
+    """Main application entry point"""
+    # Start web server first
+    runner = await start_web_server()
+    
+    try:
+        # Then start bot
+        await start_bot()
+    finally:
+        # Cleanup
+        await runner.cleanup()
+        await bot.session.close()
 
 if __name__ == "__main__":
     try:
-        port = int(os.environ.get("PORT", 8000))
-        web.run_app(
-            init_app(),
-            port=port,
-            handle_signals=True,
-            access_log=logger
-        )
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
     except Exception as e:
-        logger.critical(f"Failed to start application: {e}")
+        logger.critical(f"Application failed: {e}")
         raise
