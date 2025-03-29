@@ -1,3 +1,4 @@
+
 import sqlite3
 import logging
 import time
@@ -22,7 +23,6 @@ class Config:
     CHANNEL_USERNAME_sh = "+ZRxWtd33UQc5YzQy"  # Hidden channel
     CHANNEL_LINK_sh = f"https://t.me/{CHANNEL_USERNAME_sh}"
     CHANNEL_ID_sh = -1002537276349
-   class Config:
     BOT_TOKEN = os.getenv("BOT_TOKEN") or "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k"
     ADMIN_IDS = [7871012050, 7183540853]  # Admins list
     BATCH_SIZE = 30  # For bulk operations
@@ -40,8 +40,10 @@ print("kino.db yaratildi!")
     "start": "node index.js"
   }
 }
-touch kino.db
-chmod 777 kino.db
+# Fayl mavjudligini tekshirish va yaratish
+import os
+if not os.path.exists('kino.db'):
+    open('kino.db', 'w').close()
 # Improved logging setup
 logging.basicConfig(
     level=logging.INFO,
@@ -758,6 +760,14 @@ async def on_shutdown():
         logger.info("Bot to'xtatildi")
     except Exception as e:
         logger.error(f"Shutdown error: {e}")
+
+async def main():
+    """Asosiy bot funksiyasi"""
+    await on_startup()  # Ishga tushirish funksiyasi
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await on_shutdown()  # To'xtatish funksiyasi
 
 if __name__ == '__main__':
     try:
