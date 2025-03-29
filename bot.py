@@ -11,7 +11,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message, ForceReply
 from aiogram.enums import ParseMode
-
+import os
+from dotenv import load_dotenv
+load_dotenv()
 # Enhanced configuration with type hints and better organization
 class Config:
     CHANNEL_USERNAME = "ajoyib_kino_kodlari1"
@@ -20,7 +22,8 @@ class Config:
     CHANNEL_USERNAME_sh = "+ZRxWtd33UQc5YzQy"  # Hidden channel
     CHANNEL_LINK_sh = f"https://t.me/{CHANNEL_USERNAME_sh}"
     CHANNEL_ID_sh = -1002537276349
-    BOT_TOKEN = "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k"
+   class Config:
+    BOT_TOKEN = os.getenv("BOT_TOKEN") or "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k"
     ADMIN_IDS = [7871012050, 7183540853]  # Admins list
     BATCH_SIZE = 30  # For bulk operations
     BATCH_DELAY = 1  # Delay between batches in seconds
@@ -37,7 +40,8 @@ print("kino.db yaratildi!")
     "start": "node index.js"
   }
 }
-
+touch kino.db
+chmod 777 kino.db
 # Improved logging setup
 logging.basicConfig(
     level=logging.INFO,
@@ -755,13 +759,11 @@ async def on_shutdown():
     except Exception as e:
         logger.error(f"Shutdown error: {e}")
 
-async def main():
-    """Main bot function"""
-    await on_startup()
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await on_shutdown()
-
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        print("Bot ishga tushmoqda...")
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Bot to'xtatildi")
+    except Exception as e:
+        print(f"Kutilmagan xato: {e}")
