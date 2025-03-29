@@ -1,6 +1,5 @@
 import sqlite3
 import logging
-import time
 from datetime import datetime
 import asyncio
 from aiogram import Bot, Dispatcher, types, F, Router 
@@ -11,12 +10,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message, ForceReply
 from aiogram.enums import ParseMode
-import os
-from dotenv import load_dotenv
-from typing import List
 
-load_dotenv()
-
+# Enhanced configuration with type hints and better organization
 class Config:
     CHANNEL_USERNAME = "ajoyib_kino_kodlari1"
     CHANNEL_LINK = f"https://t.me/{CHANNEL_USERNAME}"
@@ -24,24 +19,11 @@ class Config:
     CHANNEL_USERNAME_sh = "+ZRxWtd33UQc5YzQy"  # Hidden channel
     CHANNEL_LINK_sh = f"https://t.me/{CHANNEL_USERNAME_sh}"
     CHANNEL_ID_sh = -1002537276349
-    BOT_TOKEN = os.getenv("BOT_TOKEN") or "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k"
+    BOT_TOKEN = "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k"
     ADMIN_IDS = [7871012050, 7183540853]  # Admins list
     BATCH_SIZE = 30  # For bulk operations
-    BATCH_DELAY = 1  # Delay between batches in secondsnfigured. Please set ADMIN_IDS in .env file")
-    
-    # Admin list (converted from comma-separated string to list of integers)
-    ADMIN_IDS = [int(id.strip()) for id in os.getenv("ADMIN_IDS", "7871012050,7183540853").split(",")]
-    
-    # Performance settings
-    BATCH_SIZE = 30  # For bulk operations
     BATCH_DELAY = 1  # Delay between batches in seconds
-    
-import sqlite3
 
-# Fayl mavjudligini tekshirish va yaratish
-import os
-if not os.path.exists('kino.db'):
-    open('kino.db', 'w').close()
 # Improved logging setup
 logging.basicConfig(
     level=logging.INFO,
@@ -732,88 +714,33 @@ async def handle_admin_reply(message: types.Message):
 # ========================
 
 async def on_startup():
-    """Initialize resources on startup"""
+    """Initialize database and other resources"""
     try:
-        # Initialize database connection
         db = Database()
-        logger.info("✅ Bot ishga tushdi va ma'lumotlar bazasi ulanadi")
+        logger.info("Bot ishga tushdi")
         
-        # Send notifications to all admins
+        # Send startup notification to admins
         for admin_id in Config.ADMIN_IDS:
             try:
                 await bot.send_message(
                     admin_id,
-                    "🤖 Bot ishga tushdi!\n"
-                    f"🕰 Sana: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-                    f"🔗 Kanal: {Config.CHANNEL_LINK}"
+                    "🤖 Bot ishga tushdi va tayyor!"
                 )
             except Exception as e:
-                logger.warning(f"⚠️ Admin {admin_id} ga bildirish yuborilmadi: {str(e)}")
-                
+                logger.warning(f"Failed to notify admin {admin_id}: {e}")
     except Exception as e:
-        logger.critical(f"❌ Bot ishga tushmadi: {str(e)}")
+        logger.critical(f"Startup failed: {e}")
         raise
 
-
-async def on_startup():
-    # Sizning mavjud on_startup funksiyangiz
-    pass
-
 async def on_shutdown():
-    # Sizning mavjud on_shutdown funksiyangiz
-    pass
-
-# Yangi improved main() funksiya bu erga qo'yiladi
-async def main():
-    """Yaxshilangan asosiy bot funksiyasi"""
-    await on_startup()
-    
-    while True:  # Cheksiz tsikl
-        try:
-            logger.info("🔄 Bot yangiliklarni kuzatmoqda...")
-            await dp.start_polling(
-                bot,
-                skip_updates=True,
-                allowed_updates=dp.resolve_used_update_types(),
-                close_bot_session=False
-            )
-            
-        except (ConnectionError, aiohttp.ClientError) as e:
-            logger.error(f"🔴 Ulanish xatosi: {e}, 5 soniyadan keyin qayta urinilmoqda...")
-            await asyncio.sleep(5)
-            
-        except sqlite3.OperationalError as e:
-            if "database is locked" in str(e):
-                logger.error("🔴 Ma'lumotlar bazasi bloklangan, 5 soniyadan keyin qayta urinilmoqda...")
-                await asyncio.sleep(5)
-            else:
-                logger.error(f"💥 Database xatosi: {e}")
-                await asyncio.sleep(10)
-                
-        except Exception as e:
-            logger.error(f"💥 Kutilmagan xatolik: {type(e).__name__}: {e}")
-            await asyncio.sleep(10)
-            
-        # Agar polling to'xtasa, avtomatik ravishda qayta ishga tushadi
-
-async def on_shutdown():
-    """Resurslarni tozalash"""
+    """Cleanup resources"""
     try:
         db = Database()
         db.close()
-        logger.info("✅ Resurslar tozalandi")
+        logger.info("Bot to'xtatildi")
     except Exception as e:
-        logger.error(f"🔴 To'xtatishda xato: {str(e)}")
-    finally:
-        await bot.session.close()
+        logger.error(f"Shutdown error: {e}")
 
-if __name__ == '__main__':
-    try:
-        logger.info("🚀 Botni ishga tushirish...")
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("👋 Foydalanuvchi tomonidan to'xtatildi")
-        asyncio.run(on_shutdown())
-    except Exception as e:
-        logger.critical(f"💥 Dasturdan tashqaridagi xatolik: {e}")
-        asyncio.run(on_shutdown())
+if __name__ == "__main__":
+    asyncio.run(main())
+    
