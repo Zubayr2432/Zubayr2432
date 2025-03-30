@@ -25,8 +25,14 @@ class Config:
     BOT_TOKEN = "7808158374:AAGMY8mkb0HVi--N2aJyRrPxrjotI6rnm7k"
     ADMIN_IDS = [7871012050, 7183540853]
 
-# Logging
-logging.basicConfig(level=logging.INFO)
+import logging
+
+# Logger sozlamalari
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='bot.log'
+)
 logger = logging.getLogger(__name__)
 
 # Bot obyektlari
@@ -570,7 +576,20 @@ async def send_advertisement(message: types.Message, state: FSMContext):
         f"❌ Yuborilmadi: {total - success}"
     )
     await state.clear()
-
+@dp.message(Command("healthcheck"))
+async def healthcheck(message: types.Message):
+    try:
+        # Database connection check
+        db = Database()
+        db.cursor.execute("SELECT 1")
+        
+        # Telegram API check
+        await bot.get_me()
+        
+        await message.answer("✅ Bot ishlayapti")
+    except Exception as e:
+        await message.answer(f"❌ Xatolik: {str(e)}")
+        
 # Asosiy menyuga qaytish
 @dp.message(F.text == "⬅️ Asosiy menyu")
 async def back_to_main_menu(message: types.Message):
