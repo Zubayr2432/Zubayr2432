@@ -1,4 +1,4 @@
-import asyncio  # Bu import qo'shilishi kerak
+import asyncio
 import os
 import logging
 import sqlite3
@@ -8,7 +8,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import StateFilter
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message, ForceReply
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message, ForceReply, InputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from datetime import datetime
 
@@ -38,20 +38,12 @@ user_data = set()  # Ro'yxatdan o'tgan foydalanuvchilar ID lari
 
 # Holatlar
 class AdminState(StatesGroup):
-    # Kino qo'shish bilan bog'liq holatlar
     waiting_for_code = State()    # Kino kodi kutilmoqda
     waiting_for_name = State()    # Kino nomi kutilmoqda
     waiting_for_file = State()    # Kino fayli kutilmoqda
-    
-    # Reklama yuborish holati
     send_ad = State()             # Reklama matni kutilmoqda
-    
-    # Admin bilan aloqa holati
     contact_admin = State()       # Admin bilan aloqa xabari kutilmoqda
-    
-    # Kino o'chirish holati
     waiting_for_movie_code_to_delete = State()  # O'chirish uchun kod kutilmoqda
-
 
 # Ma'lumotlar bazasi
 class Database:
@@ -80,6 +72,52 @@ class Database:
             )
         """)
         self.conn.commit()
+    
+    def add_user(self, user_id, full_name, username):
+        self.execute(
+            """INSERT OR IGNORE INTO users (user_id, full_name, username) 
+            VALUES (?, ?, ?)""",
+            (user_id, full_name, username),
+            commit=True
+        )
+    
+    def update_user_activity(self, user_id):
+        self.execute(
+            "UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE user_id = ?",
+            (user_id,),
+            commit=True
+        )
+    
+    def get_movie_by_code(self, code):
+        return self.cursor.execute(
+            "SELECT nomi, file_id FROM kinolar WHERE kod = ?", 
+            (code,)
+        ).fetchone()
+    
+    def add_movie(self, code, name, file_id):
+        return self.execute(
+            "INSERT INTO kinolar (kod, nomi, file_id) VALUES (?, ?, ?)",
+            (code, name, file_id),
+            commit=True
+        )
+    
+    def delete_movie(self, code):
+        return self.execute(
+            "DELETE FROM kinolar WHERE kod = ?",
+            (code,),
+            commit=True
+        )
+    
+    def get_stats(self):
+        total_users = self.cursor.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        active_users = self.cursor.execute(
+            "SELECT COUNT(*) FROM users WHERE last_active > datetime('now', '-30 days')"
+        ).fetchone()[0]
+        total_movies = self.cursor.execute("SELECT COUNT(*) FROM kinolar").fetchone()[0]
+        return total_users, active_users, total_movies
+    
+    def get_all_users(self):
+        return self.cursor.execute("SELECT user_id FROM users").fetchall()
     
     def execute(self, query, params=None, commit=False):
         try:
@@ -123,12 +161,7 @@ async def start_cmd(message: types.Message):
     user = message.from_user
     
     db = Database()
-    db.execute(
-        """INSERT OR REPLACE INTO users (user_id, full_name, username, last_active) 
-        VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
-        (user.id, user.full_name, user.username),
-        commit=True
-    )
+    db.add_user(user.id, user.full_name, user.username)
     
     if not await check_subscription(user.id):
         await ask_for_subscription(message)
@@ -172,10 +205,7 @@ async def send_movie_by_code(message: types.Message):
     code = int(message.text)
     db = Database()
     
-    movie = db.cursor.execute(
-        "SELECT nomi, file_id FROM kinolar WHERE kod = ?", 
-        (code,)
-    ).fetchone()
+    movie = db.get_movie_by_code(code)
     
     if movie:
         try:
@@ -186,11 +216,7 @@ async def send_movie_by_code(message: types.Message):
                 caption=f"🎬 {movie[0]}\n\n📢 Bizning asosiy kanal: {Config.CHANNEL_LINK}"
             )
             
-            db.execute(
-                "UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE user_id = ?",
-                (user.id,),
-                commit=True
-            )
+            db.update_user_activity(user.id)
         except Exception as e:
             logger.error(f"Movie send error: {e}")
             await message.answer("❌ Kino yuborishda xatolik yuz berdi")
@@ -209,7 +235,6 @@ async def contact_admin(message: types.Message, state: FSMContext):
         )
     )
     await state.set_state(AdminState.contact_admin)
-    
 
 @dp.message(AdminState.contact_admin)
 async def forward_to_admin(message: types.Message, state: FSMContext):
@@ -315,11 +340,10 @@ async def handle_admin_reply(message: types.Message):
     except Exception as e:
         logger.error(f"Admin reply error: {e}")
         await message.answer("❌ Xatolik yuz berdi")
-#
 
+# Admin paneli
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
-    """Admin paneli yangi versiyasi (kino o'chirish tugmasi bilan)"""
     if message.from_user.id not in Config.ADMIN_IDS:
         await message.answer("⛔ Ruxsat yo'q!")
         return
@@ -327,10 +351,10 @@ async def admin_panel(message: types.Message):
     builder = ReplyKeyboardBuilder()
     builder.button(text="📊 Statistika")
     builder.button(text="🎬 Kino qo'shish")
-    builder.button(text="🗑️ Kino o'chirish")  # Yangi tugma
+    builder.button(text="🗑️ Kino o'chirish")
     builder.button(text="📢 Reklama yuborish")
     builder.button(text="⬅️ Asosiy menyu")
-    builder.adjust(2)  # 2 ta tugma qatorida
+    builder.adjust(2)
     
     await message.answer(
         "👨‍💻 Admin paneli\n\n"
@@ -338,71 +362,14 @@ async def admin_panel(message: types.Message):
         reply_markup=builder.as_markup(resize_keyboard=True)
     )
 
-# Kino o'chirishni boshlash
-@dp.message(F.text == "🗑️ Kino o'chirish")
-async def delete_movie_start(message: types.Message, state: FSMContext):
-    if message.from_user.id not in Config.ADMIN_IDS:
-        return
-    
-    await message.answer(
-        "🔢 O'chirish uchun kino kodini yuboring:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="◀️ Bekor qilish")]],
-            resize_keyboard=True
-        )
-    )
-    await state.set_state("waiting_for_movie_code_to_delete")
-
-# Kino kodini qabul qilish va o'chirish
-@dp.message(F.text.regexp(r'^\d+$'), StateFilter("waiting_for_movie_code_to_delete"))
-async def delete_movie_by_code(message: types.Message, state: FSMContext):
-    code = int(message.text)
-    db = Database()
-    
-    # Kino mavjudligini tekshirish
-    movie = db.cursor.execute(
-        "SELECT nomi FROM kinolar WHERE kod = ?", 
-        (code,)
-    ).fetchone()
-    
-    if not movie:
-        await message.answer("❌ Bunday kodli kino topilmadi")
-        await state.clear()
-        return
-    
-    # Kino o'chirish
-    try:
-        db.execute(
-            "DELETE FROM kinolar WHERE kod = ?",
-            (code,),
-            commit=True
-        )
-        await message.answer(f"✅ Kino kod {code} muvaffaqiyatli o'chirildi")
-    except Exception as e:
-        logger.error(f"Delete movie error: {e}")
-        await message.answer("❌ Kino o'chirishda xatolik yuz berdi")
-    
-    await state.clear()
-    await admin_panel(message)
-
-# Bekor qilish
-@dp.message(F.text == "◀️ Bekor qilish", StateFilter("waiting_for_movie_code_to_delete"))
-async def cancel_delete_movie(message: types.Message, state: FSMContext):
-    await state.clear()
-    await admin_panel(message)
-
-
+# Statistika
 @dp.message(F.text == "📊 Statistika")
 async def show_stats(message: types.Message):
     if message.from_user.id not in Config.ADMIN_IDS:
         return
     
     db = Database()
-    total_users = db.cursor.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    active_users = db.cursor.execute(
-        "SELECT COUNT(*) FROM users WHERE last_active > datetime('now', '-30 days')"
-    ).fetchone()[0]
-    total_movies = db.cursor.execute("SELECT COUNT(*) FROM kinolar").fetchone()[0]
+    total_users, active_users, total_movies = db.get_stats()
     
     await message.answer(
         f"📊 Statistika\n\n👥 Jami foydalanuvchilar: {total_users}\n"
@@ -410,16 +377,10 @@ async def show_stats(message: types.Message):
         f"🎬 Jami kinolar: {total_movies}"
     )
 
-
-
-# Admin tekshiruvi uchun yordamchi funksiya
-async def is_admin(user_id: int) -> bool:
-    return user_id in Config.ADMIN_IDS
-
+# Kino qo'shish
 @dp.message(F.text == "🎬 Kino qo'shish")
 async def start_add_movie(message: types.Message, state: FSMContext):
-    if not await is_admin(message.from_user.id):
-        await message.answer("⛔ Ruxsat yo'q!")
+    if message.from_user.id not in Config.ADMIN_IDS:
         return
     
     await message.answer(
@@ -449,17 +410,13 @@ async def get_movie_name(message: types.Message, state: FSMContext):
     )
     await state.set_state(AdminState.waiting_for_file)
 
-@dp.message(AdminState.waiting_for_file)
+@dp.message(AdminState.waiting_for_file, F.video | F.document)
 async def process_movie(message: types.Message, state: FSMContext):
     if message.text == "◀️ Ortga":
         await state.clear()
         await admin_panel(message)
         return
 
-    if not message.video:
-        await message.answer("❌ Faqat video qabul qilinadi!")
-        return
-    
     data = await state.get_data()
     nomi = data.get("nomi", "Nomsiz")
     
@@ -479,18 +436,21 @@ async def process_movie(message: types.Message, state: FSMContext):
         )
         
         # Send video to channel
-        msg = await bot.send_video(
-            chat_id=Config.CHANNEL_ID_sh,
-            video=message.video.file_id,
-            caption=caption
-        )
+        if message.video:
+            msg = await bot.send_video(
+                chat_id=Config.CHANNEL_ID_sh,
+                video=message.video.file_id,
+                caption=caption
+            )
+        else:
+            msg = await bot.send_document(
+                chat_id=Config.CHANNEL_ID_sh,
+                document=message.document.file_id,
+                caption=caption
+            )
         
         # Save to database
-        db.execute(
-            "INSERT INTO kinolar (kod, nomi, file_id) VALUES (?, ?, ?)",
-            (new_code, nomi, msg.message_id),
-            commit=True
-        )
+        db.add_movie(new_code, nomi, msg.message_id)
         
         await message.answer(
             f"✅ Kino muvaffaqiyatli qo'shildi!\n\n"
@@ -503,26 +463,87 @@ async def process_movie(message: types.Message, state: FSMContext):
         await message.answer(f"❌ Xatolik: {str(e)}")
     
     await state.clear()
-# Reklama yuborishni boshlash
-@dp.message(lambda message: message.text == "📢 Reklama yuborish" and message.from_user.id in Config.ADMIN_IDS)
-async def ask_for_advertisement(message: types.Message):
+    await admin_panel(message)
+
+# Kino o'chirish
+@dp.message(F.text == "🗑️ Kino o'chirish")
+async def delete_movie_start(message: types.Message, state: FSMContext):
+    if message.from_user.id not in Config.ADMIN_IDS:
+        return
+    
     await message.answer(
-        "✍️ Reklama uchun matn, rasm, video yoki fayl yuboring:",
-        reply_markup=types.ReplyKeyboardRemove()
+        "🔢 O'chirish uchun kino kodini yuboring:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="◀️ Bekor qilish")]],
+            resize_keyboard=True
+        )
     )
+    await state.set_state(AdminState.waiting_for_movie_code_to_delete)
+
+@dp.message(AdminState.waiting_for_movie_code_to_delete, F.text.regexp(r'^\d+$'))
+async def delete_movie_by_code(message: types.Message, state: FSMContext):
+    code = int(message.text)
+    db = Database()
+    
+    # Kino mavjudligini tekshirish
+    movie = db.get_movie_by_code(code)
+    
+    if not movie:
+        await message.answer("❌ Bunday kodli kino topilmadi")
+        await state.clear()
+        return
+    
+    # Kino o'chirish
+    if db.delete_movie(code):
+        await message.answer(f"✅ Kino kod {code} muvaffaqiyatli o'chirildi")
+    else:
+        await message.answer("❌ Kino o'chirishda xatolik yuz berdi")
+    
+    await state.clear()
+    await admin_panel(message)
+
+@dp.message(AdminState.waiting_for_movie_code_to_delete, F.text == "◀️ Bekor qilish")
+async def cancel_delete_movie(message: types.Message, state: FSMContext):
+    await state.clear()
+    await admin_panel(message)
 
 # Reklama yuborish
-@dp.message(lambda message: message.from_user.id in Config.ADMIN_IDS)
-async def send_advertisement(message: types.Message):
-    if not user_data:
-        await message.answer("⚠️ Hozircha hech qanday foydalanuvchi yo'q!")
+@dp.message(F.text == "📢 Reklama yuborish")
+async def start_advertisement(message: types.Message, state: FSMContext):
+    if message.from_user.id not in Config.ADMIN_IDS:
         return
+    
+    await message.answer(
+        "✍️ Reklama uchun matn, rasm, video yoki fayl yuboring:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="◀️ Bekor qilish")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(AdminState.send_ad)
 
-    success, failed = 0, 0
-    total = len(user_data)
-
-    # Foydalanuvchilarga xabar yuborish
-    for user_id in user_data:
+@dp.message(AdminState.send_ad)
+async def send_advertisement(message: types.Message, state: FSMContext):
+    if message.text == "◀️ Bekor qilish":
+        await state.clear()
+        await admin_panel(message)
+        return
+    
+    db = Database()
+    users = db.get_all_users()
+    if not users:
+        await message.answer("⚠️ Hozircha hech qanday foydalanuvchi yo'q!")
+        await state.clear()
+        return
+    
+    total = len(users)
+    success = 0
+    
+    # Progress xabarini yuborish
+    progress_msg = await message.answer(f"⏳ Reklama yuborilmoqda... 0/{total}")
+    
+    for user in users:
+        user_id = user[0]
         try:
             if message.text:
                 await bot.send_message(user_id, message.text)
@@ -533,61 +554,31 @@ async def send_advertisement(message: types.Message):
             elif message.document:
                 await bot.send_document(user_id, message.document.file_id, caption=message.caption)
             success += 1
+            
+            # Har 10 ta yuborilganda progress yangilash
+            if success % 10 == 0 or success == total:
+                await progress_msg.edit_text(f"⏳ Reklama yuborilmoqda... {success}/{total}")
+                
         except Exception as e:
             logger.error(f"Xabar yuborilmadi (User ID: {user_id}): {e}")
-            failed += 1
-        finally:
-            # Progress bar ko'rsatish
-            if (success + failed) % 10 == 0 or (success + failed) == total:
-                await message.answer(
-                    f"⏳ Yuborilmoqda... {success + failed}/{total}\n"
-                    f"✅ Muvaffaqiyatli: {success}\n"
-                    f"❌ Xatoliklar: {failed}"
-                )
-
-    # Yakuniy xabar
+    
+    await progress_msg.delete()
     await message.answer(
         f"📢 Reklama yuborish yakunlandi!\n\n"
         f"👥 Jami foydalanuvchilar: {total}\n"
-        f"✅ Muvaffaqiyatli: {success}\n"
-        f"❌ Xatoliklar: {failed}"
+        f"✅ Muvaffaqiyatli yuborildi: {success}\n"
+        f"❌ Yuborilmadi: {total - success}"
     )
+    await state.clear()
 
-# Foydalanuvchilarni ro'yxatga olish
-@dp.message(lambda message: message.from_user.id not in Config.ADMIN_IDS)
-async def register_user(message: types.Message):
-    user_id = message.from_user.id
-    if user_id not in user_data:
-        user_data.add(user_id)
-        
-        # Ma'lumotlar bazasiga saqlash
-        db = Database()
-        db.execute(
-            """INSERT OR REPLACE INTO users (user_id, full_name, username, last_active) 
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
-            (user_id, message.from_user.full_name, message.from_user.username),
-            commit=True
-        )
-        
-        await message.answer("✅ Siz muvaffaqiyatli ro'yxatdan o'tdingiz!")
-    else:
-        await message.answer("👋 Siz allaqachon ro'yxatdan o'tgansiz!")
-
-# Start komandasi
-@dp.message(Command("start"))
-async def start_command(message: types.Message):
-    if message.from_user.id in Config.ADMIN_IDS:
-        await message.answer("👋 Admin, sizga maxsus imkoniyatlar mavjud!")
-    else:
-        await message.answer("👋 Botga xush kelibsiz!")
+# Asosiy menyuga qaytish
+@dp.message(F.text == "⬅️ Asosiy menyu")
+async def back_to_main_menu(message: types.Message):
+    await start_cmd(message)
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    # Yangi usul (Python 3.7+)
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Bot to'xtatildi")
+    asyncio.run(main())
