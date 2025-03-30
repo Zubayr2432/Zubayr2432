@@ -2,6 +2,8 @@ import asyncio
 import os
 import logging
 import sqlite3
+from aiogram import types
+from aiohttp import web
 from aiogram.fsm.state import State, StatesGroup
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -590,6 +592,12 @@ async def healthcheck(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ Xatolik: {str(e)}")
         
+async def healthcheck(request):
+    return web.Response(text="OK", status=200)
+
+app = web.Application()
+app.router.add_get("/health", healthcheck)
+
 # Asosiy menyuga qaytish
 @dp.message(F.text == "⬅️ Asosiy menyu")
 async def back_to_main_menu(message: types.Message):
