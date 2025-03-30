@@ -2,6 +2,7 @@ import asyncio  # Bu import qo'shilishi kerak
 import os
 import logging
 import sqlite3
+from aiogram.fsm.state import State, StatesGroup
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -42,7 +43,7 @@ class AdminState(StatesGroup):
     waiting_for_name = State()    # Kino nomi kutilmoqda
     waiting_for_file = State()    # Kino fayli kutilmoqda
     
-    # Reklama yuborish holati (siz so'ragan qism)
+    # Reklama yuborish holati
     send_ad = State()             # Reklama matni kutilmoqda
     
     # Admin bilan aloqa holati
@@ -50,6 +51,7 @@ class AdminState(StatesGroup):
     
     # Kino o'chirish holati
     waiting_for_movie_code_to_delete = State()  # O'chirish uchun kod kutilmoqda
+
 
 # Ma'lumotlar bazasi
 class Database:
@@ -410,106 +412,97 @@ async def show_stats(message: types.Message):
 
 
 
-
-from aiogram.fsm.state import State, StatesGroup
-
-# Holatlar guruhini aniqlash
-class AdminState(StatesGroup):
-    waiting_for_code = State()
-    waiting_for_name = State()
-    waiting_for_file = State()
+# Admin tekshiruvi uchun yordamchi funksiya
+async def is_admin(user_id: int) -> bool:
+    return user_id in Config.ADMIN_IDS
 
 @dp.message(F.text == "🎬 Kino qo'shish")
-async def add_movie_start(message: types.Message, state: FSMContext):
-    if message.from_user.id not in Config.ADMIN_IDS:
+async def start_add_movie(message: types.Message, state: FSMContext):
+    if not await is_admin(message.from_user.id):
+        await message.answer("⛔ Ruxsat yo'q!")
         return
     
-    try:
-        await state.set_state(AdminState.waiting_for_code)
-        await message.answer(
-            "🎥 Kino kodini yuboring:",
-            reply_markup=ReplyKeyboardMarkup(
-                keyboard=[[KeyboardButton(text="◀️ Bekor qilish")]],
-                resize_keyboard=True
-            )
+    await message.answer(
+        "🎥 <b>Yangi kino qo'shish</b>\n\n"
+        "Kino nomini yuboring:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="◀️ Ortga")]],
+            resize_keyboard=True
         )
-    except Exception as e:
-        logger.error(f"State set error: {e}")
-        await message.answer("❌ Xatolik yuz berdi")
-
-@dp.message(AdminState.waiting_for_code)
-async def process_movie_code(message: types.Message, state: FSMContext):
-    if message.text == "◀️ Bekor qilish":
-        await state.clear()
-        await admin_panel(message)
-        return
-    
-    try:
-        code = int(message.text)
-        await state.update_data(code=code)
-        await state.set_state(AdminState.waiting_for_name)
-        await message.answer("📝 Kino nomini yuboring:")
-    except ValueError:
-        await message.answer("❌ Noto'g'ri format. Faqat raqam kiriting.")
+    )
+    await state.set_state(AdminState.waiting_for_name)
 
 @dp.message(AdminState.waiting_for_name)
-async def process_movie_name(message: types.Message, state: FSMContext):
-    if message.text == "◀️ Bekor qilish":
+async def get_movie_name(message: types.Message, state: FSMContext):
+    if message.text == "◀️ Ortga":
         await state.clear()
         await admin_panel(message)
         return
     
     await state.update_data(nomi=message.text)
+    await message.answer(
+        "📹 Endi kino videosini yuboring:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="◀️ Ortga")]],
+            resize_keyboard=True
+        )
+    )
     await state.set_state(AdminState.waiting_for_file)
-    await message.answer("📤 Kino faylini yuboring (video, dokument yoki skrinshot):")
 
 @dp.message(AdminState.waiting_for_file)
-async def process_movie_file(message: types.Message, state: FSMContext):
-    if message.text == "◀️ Bekor qilish":
+async def process_movie(message: types.Message, state: FSMContext):
+    if message.text == "◀️ Ortga":
         await state.clear()
         await admin_panel(message)
         return
-    
-    data = await state.get_data()
-    code = data.get('code')
-    nomi = data.get('nomi')
-    
-    if message.video:
-        file_id = message.video.file_id
-    elif message.document:
-        file_id = message.document.file_id
-    elif message.photo:
-        file_id = message.photo[-1].file_id
-    else:
-        await message.answer("❌ Noto'g'ri format. Video, dokument yoki rasm yuboring.")
+
+    if not message.video:
+        await message.answer("❌ Faqat video qabul qilinadi!")
         return
     
+    data = await state.get_data()
+    nomi = data.get("nomi", "Nomsiz")
+    
+    # Generate new code
+    db = Database()
+    result = db.cursor.execute("SELECT MAX(kod) FROM kinolar").fetchone()
+    new_code = (result[0] if result[0] else 1000) + 1
+    
     try:
-        sent_message = await bot.send_message(
-            Config.CHANNEL_ID_sh,
-            f"🎬 {nomi}\n🔢 Kodi: {code}"
+        # Post to main channel
+        bot_username = (await bot.get_me()).username
+        caption = (
+            f"🎬 <b>{nomi}</b>\n\n"
+            f"🔢 Kodi: <code>{new_code}</code>\n\n"
+            f"📥 @{bot_username} orqali yuklab olish mumkin\n"
+            f"🔗 Kanal: {Config.CHANNEL_LINK}"
         )
         
-        db = Database()
-        success = db.execute(
-            """INSERT INTO kinolar (kod, nomi, file_id) 
-            VALUES (?, ?, ?)""",
-            (code, nomi, sent_message.message_id),
+        # Send video to channel
+        msg = await bot.send_video(
+            chat_id=Config.CHANNEL_ID_sh,
+            video=message.video.file_id,
+            caption=caption
+        )
+        
+        # Save to database
+        db.execute(
+            "INSERT INTO kinolar (kod, nomi, file_id) VALUES (?, ?, ?)",
+            (new_code, nomi, msg.message_id),
             commit=True
         )
         
-        if success:
-            await message.answer("✅ Kino muvaffaqiyatli qo'shildi!")
-        else:
-            await message.answer("❌ Bazaga saqlashda xatolik yuz berdi")
+        await message.answer(
+            f"✅ Kino muvaffaqiyatli qo'shildi!\n\n"
+            f"📝 Nomi: {nomi}\n"
+            f"🔢 Kodi: <code>{new_code}</code>"
+        )
+        
     except Exception as e:
-        logger.error(f"Add movie error: {e}")
-        await message.answer("❌ Kino qo'shishda xatolik yuz berdi")
+        logger.error(f"Movie addition failed: {e}")
+        await message.answer(f"❌ Xatolik: {str(e)}")
     
     await state.clear()
-    await admin_panel(message)
-
-
 # Reklama yuborishni boshlash
 @dp.message(lambda message: message.text == "📢 Reklama yuborish" and message.from_user.id in Config.ADMIN_IDS)
 async def ask_for_advertisement(message: types.Message):
